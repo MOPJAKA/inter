@@ -1,0 +1,16 @@
+left=
+(op)
+op()
+add sum
+sub minus
+mult prod
+pow ^
+div /
+rem %
+xor <>
+xor ><
+and &&
+or ||
+input in
+output print
+= ->
