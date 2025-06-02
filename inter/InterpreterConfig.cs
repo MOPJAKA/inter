@@ -27,7 +27,11 @@ namespace Interpreter
         /// <summary>
         /// Оператор присваивания (по умолчанию "=")
         /// <summary>
-        public string AssignOperator { get; private set; } = "=";
+        public string AssignOperator { get; set; } = "="; // дефолтно равно!
+
+        public int BaseLiterals { get; set; } = 10;
+        public int BaseInput { get; set; } = 10;
+        public int BaseOutput { get; set; } = 10;
 
         /// <summary>
         /// Получить оригинальное имя команды по синониму
@@ -45,7 +49,7 @@ namespace Interpreter
         /// <summary>
         /// Применение директивы из settings.txt
         /// <summary>
-        public void ApplyDirective(string directive)
+        public void ApplyDirective(string directive)  
         {
             directive = directive.Trim();
 

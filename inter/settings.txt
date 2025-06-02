@@ -1,16 +1,9 @@
 left=
-(op)
 op()
-add sum
+add plus
 sub minus
-mult prod
-pow ^
-div /
-rem %
-xor <>
-xor ><
-and &&
-or ||
-input in
+mult mul
+div div
+rem mod
+pow pow
 output print
-= ->

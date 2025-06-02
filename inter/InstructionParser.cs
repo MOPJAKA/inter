@@ -7,17 +7,12 @@ namespace Interpreter
 {
     public static class InstructionParser
     {
-        public static Expression Parse(string line, InterpreterConfig config, int baseAssign)
+        public static Expression Parse(string line, InterpreterConfig config)
         {
             line = Utils.StripComment(line);
 
             if (string.IsNullOrWhiteSpace(line))
                 return null;
-
-            if (!line.EndsWith(";"))
-                throw new Exception("Ожидался символ ';' в конце инструкции.");
-
-            line = line[..^1].Trim();
 
             // Попробуем распознать как команду (print(...))
             var commandMatch = Regex.Match(line, @"^(\w+)\((.*)\)$");
@@ -28,7 +23,7 @@ namespace Interpreter
 
                 var actual = config.GetActualCommand(cmd);
                 var parsedArgs = SplitArgumentsRespectingNesting(args)
-                    .ConvertAll(arg => ParseExpression(arg, config, baseAssign));
+                    .ConvertAll(arg => ParseExpression(arg, config));
                 // ConvertAll применяет указанную функцию ко всем элементам списка
 
                 return new FunctionCall(actual, parsedArgs);
@@ -36,8 +31,8 @@ namespace Interpreter
 
             return config.Assignment switch
             {
-                AssignmentDirection.Left => ParseLeftAssignment(line, config, baseAssign),
-                AssignmentDirection.Right => ParseRightAssignment(line, config, baseAssign),
+                AssignmentDirection.Left => ParseLeftAssignment(line, config),
+                AssignmentDirection.Right => ParseRightAssignment(line, config),
                 _ => throw new Exception("Неизвестный стиль присваивания.")
             };
         }
@@ -46,37 +41,37 @@ namespace Interpreter
         /// <summary>
         /// Разбор выражения присваивания в классическом стиле x = ... 
         /// </summary>
-        private static Expression ParseLeftAssignment(string line, InterpreterConfig config, int baseAssign)
+        private static Expression ParseLeftAssignment(string line, InterpreterConfig config)
         {
             int eqIndex = FindTopLevelAssignmentOperator(line, config.AssignOperator);
 
             if (eqIndex == -1) throw new Exception("Неверный формат присваивания.");
 
             string varName = line.Substring(0, eqIndex).Trim(); // извлечение имени переменной (до оператора всё)
-            string exprPart = line.Substring(eqIndex + 1).Trim(); // выражение, которое будет вычислено и присвоено переменной
+            string exprPart = line.Substring(eqIndex + config.AssignOperator.Length).Trim(); // выражение, которое будет вычислено и присвоено переменной
 
             if (!Utils.IsValidVariableName(varName))
                 throw new Exception($"Недопустимое имя переменной: {varName}");
 
-            return new Assignment(varName, ParseExpression(exprPart, config, baseAssign));
+            return new Assignment(varName, ParseExpression(exprPart, config));
         }
 
         /// <summary>
         /// Разбор выражения присваивания в стиле обратного присваивания ... = х
         /// </summary>
-        private static Expression ParseRightAssignment(string line, InterpreterConfig config, int baseAssign)
+        private static Expression ParseRightAssignment(string line, InterpreterConfig config)
         {
             int eqIndex = FindTopLevelAssignmentOperator(line, config.AssignOperator);
 
             if (eqIndex == -1) throw new Exception("Неверный формат присваивания.");
 
             string exprPart = line.Substring(0, eqIndex).Trim(); // выражение, которое будет вычислено и присвоено переменной
-            string varName = line.Substring(eqIndex + 1).Trim(); // извлечение имени переменной (после оператора всё)
+            string varName = line.Substring(eqIndex + config.AssignOperator.Length).Trim(); // извлечение имени переменной (после оператора всё)
 
             if (!Utils.IsValidVariableName(varName))
                 throw new Exception($"Недопустимое имя переменной: {varName}");
 
-            return new Assignment(varName, ParseExpression(exprPart, config, baseAssign));
+            return new Assignment(varName, ParseExpression(exprPart, config));
         }
 
         /// <summary>
@@ -100,18 +95,9 @@ namespace Interpreter
         /// <summary>
         /// Парсит каждый аргумент как выражение
         /// </summary>
-        private static Expression ParseExpression(string expr, InterpreterConfig config, int baseAssign)
+        private static Expression ParseExpression(string expr, InterpreterConfig config)
         {
             expr = expr.Trim();
-
-            // Литерал (константа)
-            if (Regex.IsMatch(expr, @"^[0-9A-Fa-f]+$"))
-            {
-                if (Utils.TryParseUInt32(expr, baseAssign, out var val))
-                    return new Constant(val);
-
-                throw new Exception($"Невозможно распарсить число: {expr}");
-            }
 
             // Переменная
             if (Utils.IsValidVariableName(expr))
@@ -119,8 +105,17 @@ namespace Interpreter
                 return new Variable(expr);
             }
 
+            // Литерал (константа)
+            if (Regex.IsMatch(expr, @"^[0-9A-Fa-f]+$"))
+            {
+                if (Utils.TryParseUInt32(expr, config.BaseLiterals, out var val))
+                    return new Constant(val);
+
+                throw new Exception($"Невозможно распарсить число: {expr}");
+            }
+
             // Унарная или бинарная операция
-            return ParseFunction(expr, config, baseAssign);
+            return ParseFunction(expr, config);
         }
 
         /// <summary>
@@ -128,28 +123,35 @@ namespace Interpreter
         /// </summary>
         private static List<string> SplitArgumentsRespectingNesting(string argsString)
         {
-            var args = new List<string>(); // итог
-            int depth = 0; // уровень вложенности по скобкам
-            var current = "";
-
-            foreach (var ch in argsString)
+            var args = new List<string>();
+            int depth = 0;
+            var current = new System.Text.StringBuilder();  // итог
+                                                            // уровень вложенности по скобкам
+            for (int i = 0; i < argsString.Length; i++)
             {
+                char ch = argsString[i];
+
                 if (ch == ',' && depth == 0)
-                // если символ — запятая, и мы не внутри скобок (depth == 0), то это разделитель
-                {
-                    args.Add(current.Trim());
-                    current = "";
+                {                                         // если символ — запятая, и мы не внутри скобок (depth == 0), то это разделитель
+                    // Добавляем аргумент, если не пустой
+                    var arg = current.ToString().Trim();
+                    if (!string.IsNullOrEmpty(arg))
+                        args.Add(arg);
+                    current.Clear();
                 }
                 else
                 {
-                    if (ch == '(') depth++;
-                    if (ch == ')') depth--;
-                    current += ch; // добавляем символ в текущий аргумент
+                    if (ch == '(')                        // добавляем символ в текущий аргумент
+                        depth++;
+                    else if (ch == ')')
+                        depth--;
+                    current.Append(ch);                   // для последнего аргумента
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(current)) // для последнего аргумента
-                args.Add(current.Trim());
+            var lastArg = current.ToString().Trim();
+            if (!string.IsNullOrEmpty(lastArg))
+                args.Add(lastArg);
 
             return args;
         }
@@ -157,13 +159,13 @@ namespace Interpreter
         /// <summary>
         /// Разбор строкового выражения, представляющего операцию
         /// </summary>
-        private static Expression ParseFunction(string expr, InterpreterConfig config, int baseAssign)
+        private static Expression ParseFunction(string expr, InterpreterConfig config)
         {
             expr = expr.Trim();
 
             if (config.BinaryFormat == BinarySyntax.OpBrackets || config.UnaryFormat == UnarySyntax.OpBrackets)
             {
-                var funcMatch = Regex.Match(expr, @"^(\w+)\((.*)\)$");
+                var funcMatch = Regex.Match(expr, @"^([^(]+)\((.+)\)$");
                 if (funcMatch.Success)
                 {
                     var command = funcMatch.Groups[1].Value;
@@ -173,7 +175,7 @@ namespace Interpreter
 
                     var parsedArgs = new List<Expression>();
                     foreach (var arg in args)
-                        parsedArgs.Add(ParseExpression(arg.Trim(), config, baseAssign));
+                        parsedArgs.Add(ParseExpression(arg.Trim(), config));
                     // каждый аргумент из строки преобразуется в объект Expression с помощью ParseExpression
 
                     return new FunctionCall(actualCmd, parsedArgs);
@@ -181,7 +183,7 @@ namespace Interpreter
                 }
             }
 
-            if (config.BinaryFormat == BinarySyntax.Infix) 
+            if (config.BinaryFormat == BinarySyntax.Infix)
             {
                 // (arg1 op arg2)
                 var match = Regex.Match(expr, @"^(\w+)\s+(\S+)\s+(\w+)$");
@@ -195,8 +197,8 @@ namespace Interpreter
 
                     return new FunctionCall(actualCmd, new List<Expression>
                     {
-                        ParseExpression(arg1, config, baseAssign),
-                        ParseExpression(arg2, config, baseAssign)
+                        ParseExpression(arg1, config),
+                        ParseExpression(arg2, config)
                     });
                 }
             }

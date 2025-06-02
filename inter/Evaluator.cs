@@ -5,22 +5,22 @@ namespace Interpreter
 {
     public static class Evaluator
     {
-        private static readonly Dictionary<string, uint> Variables = new();
-        // ключ - имя переменной, значение - числовое значение
-
-        public static void Evaluate(Expression expr, InterpreterConfig config, int baseAssign)
+        /// <summary>
+        /// Вычисляет выражение и обновляет trie переменных.
+        /// </summary>
+        public static void Evaluate(Expression expr, InterpreterConfig config, VariableTrie Variables)
         {
             switch (expr)
             {
                 case Assignment a:
                     {
-                        var value = EvaluateExpression(a.Value, config, baseAssign);
-                        Variables[a.VariableName] = value;
+                        var value = EvaluateExpression(a.Value, config, Variables);
+                        Variables.Set(a.VariableName, value);
                         break;
                     }
                 case FunctionCall call:
                     {
-                        var result = EvaluateFunction(call, config, baseAssign);
+                        var result = EvaluateFunction(call, config, Variables);
                         // Если функция — вывод, то не сохраняем значение
                         if (call.Command == "output" || call.Command == "print")
                             return;
@@ -34,15 +34,15 @@ namespace Interpreter
         /// <summary>
         /// Вычисление выражения Expression 
         /// </summary>
-        private static uint EvaluateExpression(Expression expr, InterpreterConfig config, int baseAssign)
+        private static uint EvaluateExpression(Expression expr, InterpreterConfig config, VariableTrie Variables)
         {
             return expr switch
             {
                 Constant c => c.Value,
-                Variable v => Variables.TryGetValue(v.Name, out var val)
+                Variable v => Variables.TryGet(v.Name, out var val)
                                 ? val // если есть переменная
                                 : throw new Exception($"Переменная '{v.Name}' не определена."),
-                FunctionCall f => EvaluateFunction(f, config, baseAssign),
+                FunctionCall f => EvaluateFunction(f, config, Variables),
                 _ => throw new Exception($"Неподдерживаемый тип выражения: {expr.GetType().Name}")
             };
         }
@@ -50,20 +50,20 @@ namespace Interpreter
         /// <summary>
         /// Вызов операции с именем и аргументами
         /// </summary>
-        private static uint EvaluateFunction(FunctionCall call, InterpreterConfig config, int baseAssign)
+        private static uint EvaluateFunction(FunctionCall call, InterpreterConfig config, VariableTrie Variables)
         {
             string command = call.Command.ToLowerInvariant();
 
             List<uint> args = new();
             foreach (var expr in call.Arguments)
-                args.Add(EvaluateExpression(expr, config, baseAssign));
+                args.Add(EvaluateExpression(expr, config, Variables));
 
             return command switch
             {
                 // Унарные
                 "not" => args.Count == 1 ? ~args[0] : throw new Exception("Ожидался 1 аргумент для 'not'"),
-                "input" or "in" => ReadInput(baseAssign), // читаем значение в нужной сс
-                "output" or "print" => WriteOutput(args[0], baseAssign),
+                "input" or "in" => ReadInput(config.BaseInput), // читаем значение в нужной сс
+                "output" or "print" => WriteOutput(args[0], config.BaseOutput),
 
                 // Бинарные арифметика
                 "add" => CheckArgs(args, 2, () => args[0] + args[1]),
@@ -100,12 +100,11 @@ namespace Interpreter
 
             while (exponent > 0)
             {
-                if ((exponent & 1) == 1) 
-                // если показатель нечётный, то умножаем результат на текущее основание
+                if ((exponent & 1) == 1)
                     result = (uint)(((ulong)result * baseVal) % mod);
 
                 baseVal = (uint)(((ulong)baseVal * baseVal) % mod);
-                exponent >>= 1; // побитовый сдвиг вправо
+                exponent >>= 1;
             }
 
             return result;

@@ -15,7 +15,7 @@ namespace Interpreter
             foreach (var rawLine in lines)
             {
                 var line = rawLine.Trim();
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) // опускаем строку при условии
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) // skip comments/empty
                     continue;
 
                 if (line == "left=")
@@ -39,6 +39,28 @@ namespace Interpreter
                 else if (line == "(op)")
                 {
                     config.BinaryFormat = BinarySyntax.Infix;
+                }
+                else if (Regex.IsMatch(line, @"^=\s*\S+$")) // например: = ->
+                {
+                    // Пример строки: '= ->'
+                    var assignOp = line.Substring(1).Trim();
+                    config.AssignOperator = assignOp;
+                }
+                // Новый блок для разбора оснований систем счисления
+                else if (Regex.IsMatch(line, @"^base_literals\s*=\s*\d+$", RegexOptions.IgnoreCase))
+                {
+                    var match = Regex.Match(line, @"^base_literals\s*=\s*(\d+)$", RegexOptions.IgnoreCase);
+                    config.BaseLiterals = int.Parse(match.Groups[1].Value);
+                }
+                else if (Regex.IsMatch(line, @"^base_input\s*=\s*\d+$", RegexOptions.IgnoreCase))
+                {
+                    var match = Regex.Match(line, @"^base_input\s*=\s*(\d+)$", RegexOptions.IgnoreCase);
+                    config.BaseInput = int.Parse(match.Groups[1].Value);
+                }
+                else if (Regex.IsMatch(line, @"^base_output\s*=\s*\d+$", RegexOptions.IgnoreCase))
+                {
+                    var match = Regex.Match(line, @"^base_output\s*=\s*(\d+)$", RegexOptions.IgnoreCase);
+                    config.BaseOutput = int.Parse(match.Groups[1].Value);
                 }
                 else
                 {

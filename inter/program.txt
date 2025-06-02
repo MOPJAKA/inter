@@ -1,4 +1,8 @@
-var_1 = 500;
-var_2 = prod(var_1, 2);
-var_3 = sum(div(var_2, 5), rem(var_1, 2));
-print(var_3);
+a = 101; # присваиваем 101 (в base_literals) переменной a
+b = 5;
+c = add(a, b);
+print(c);
+# BREAKPOINT
+d = mult(c, 2);
+print(d);
+[eще комментарий]
